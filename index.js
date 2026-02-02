@@ -13,6 +13,23 @@ app.get("/", (req, res) => {
     message: "CCREATY backend activo 🚀"
   });
 });
+// ENDPOINT PARA RECIBIR PREGUNTAS
+app.post("/ask", (req, res) => {
+  const { question } = req.body;
+
+  if (!question) {
+    return res.status(400).json({
+      status: "error",
+      message: "Falta el campo question"
+    });
+  }
+
+  res.json({
+    status: "ok",
+    answer: `Recibí tu pregunta: "${question}"`
+  });
+});
+
 
 // RAILWAY PORT (CRÍTICO)
 const PORT = process.env.PORT;
