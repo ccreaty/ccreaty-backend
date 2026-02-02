@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 /* ===========================
-   HEALTH CHECK (OBLIGATORIO)
+   HEALTH CHECK
 =========================== */
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -21,8 +21,8 @@ app.get("/", (req, res) => {
 });
 
 /* ===========================
-   MEMORY STORE (TEMPORAL)
-   Luego esto va a DB
+   IN-MEMORY JOB STORE
+   (temporal – luego DB)
 =========================== */
 const jobs = {};
 
@@ -40,7 +40,6 @@ app.post("/analyze", async (req, res) => {
       });
     }
 
-    // RESPUESTA MOCK (PRUEBA)
     const analysisId = crypto.randomUUID();
 
     return res.status(200).json({
@@ -72,8 +71,8 @@ app.post("/analyze", async (req, res) => {
         }
       ]
     });
-  } catch (err) {
-    console.error("Analyze error:", err);
+  } catch (error) {
+    console.error("Analyze error:", error);
     return res.status(500).json({
       status: "error",
       message: "Analyze failed"
@@ -82,7 +81,7 @@ app.post("/analyze", async (req, res) => {
 });
 
 /* ===========================
-   GENERATE ENDPOINT (ASYNC JOB)
+   GENERATE ENDPOINT (ASYNC)
 =========================== */
 app.post("/generate", async (req, res) => {
   try {
@@ -97,14 +96,12 @@ app.post("/generate", async (req, res) => {
 
     const jobId = crypto.randomUUID();
 
-    // Crear job
     jobs[jobId] = {
       status: "pending",
       task,
       createdAt: Date.now()
     };
 
-    // Simular procesamiento async
     setTimeout(() => {
       jobs[jobId].status = "done";
 
@@ -135,14 +132,14 @@ app.post("/generate", async (req, res) => {
           ]
         };
       }
-    }, 5000); // 5s fake processing
+    }, 5000);
 
     return res.status(200).json({
       jobId,
       status: "pending"
     });
-  } catch (err) {
-    console.error("Generate error:", err);
+  } catch (error) {
+    console.error("Generate error:", error);
     return res.status(500).json({
       status: "error",
       message: "Generate failed"
@@ -172,7 +169,7 @@ app.get("/job/:id", (req, res) => {
 const PORT = process.env.PORT;
 
 if (!PORT) {
-  console.error("❌ PORT no definido");
+  console.error("❌ PORT no definido por Railway");
   process.exit(1);
 }
 
