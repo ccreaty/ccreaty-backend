@@ -29,6 +29,14 @@ app.post("/ask", (req, res) => {
     answer: `Recibí tu pregunta: "${question}"`
   });
 });
+// ENDPOINT PARA RECIBIR IMÁGENES
+app.post("/upload", (req, res) => {
+  res.json({
+    status: "ok",
+    message: "Imagen recibida correctamente (simulación)"
+  });
+});
+
 
 
 // RAILWAY PORT (CRÍTICO)
