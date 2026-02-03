@@ -1,50 +1,72 @@
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-dotenv.config();
 
 const app = express();
+
+// -------------------- MIDDLEWARE --------------------
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-const PORT = process.env.PORT || 3000;
-
-// Inicializar Gemini
-if (!process.env.GEMINI_API_KEY) {
-  console.error("❌ GEMINI_API_KEY no está definida");
-  process.exit(1);
-}
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-// Health check
+// -------------------- HEALTH CHECK --------------------
 app.get("/", (req, res) => {
-  res.json({ status: "ok", service: "ccreaty-backend" });
+  res.json({
+    status: "ok",
+    message: "CCREATY backend activo 🚀"
+  });
 });
 
-// Test Gemini
-app.post("/gemini/test", async (req, res) => {
+// -------------------- TEST GEMINI --------------------
+app.get("/test-gemini", async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY;
 
-    if (!prompt) {
-      return res.status(400).json({ error: "Prompt requerido" });
+    if (!apiKey) {
+      return res.status(500).json({
+        error: "GEMINI_API_KEY no definida en Railway"
+      });
     }
 
-    const result = await model.generateContent(prompt);
-    const response = result.response.text();
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: "Dame 3 ángulos de venta para un suplemento natural para hombres"
+                }
+              ]
+            }
+          ]
+        })
+      }
+    );
 
-    res.json({ success: true, response });
+    const data = await response.json();
+
+    res.json({
+      success: true,
+      geminiResponse: data
+    });
+
   } catch (error) {
-    console.error("Gemini error:", error);
-    res.status(500).json({ error: "Error generando contenido" });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Backend corriendo en puerto ${PORT}`);
+// -------------------- START SERVER --------------------
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Backend CCREATY corriendo en puerto ${PORT}`);
 });
 
