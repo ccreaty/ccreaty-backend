@@ -15,9 +15,6 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // Inicializar Gemini
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-/* =========================
-   RUTA BASE
-========================= */
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -25,9 +22,6 @@ app.get("/", (req, res) => {
   });
 });
 
-/* =========================
-   TEST GEMINI REAL
-========================= */
 app.get("/test-gemini", async (req, res) => {
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-pro" });
@@ -50,9 +44,6 @@ app.get("/test-gemini", async (req, res) => {
   }
 });
 
-/* =========================
-   START SERVER
-========================= */
 app.listen(PORT, () => {
   console.log(`🚀 Backend corriendo en puerto ${PORT}`);
 });
