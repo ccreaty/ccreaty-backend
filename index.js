@@ -1,14 +1,22 @@
 import express from "express";
-import fetch from "node-fetch";
+import cors from "cors";
+import dotenv from "dotenv";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+dotenv.config();
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
+// Inicializar Gemini
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
 /* =========================
-   RUTA BASE (TEST)
+   RUTA BASE
 ========================= */
 app.get("/", (req, res) => {
   res.json({
@@ -22,25 +30,18 @@ app.get("/", (req, res) => {
 ========================= */
 app.get("/test-gemini", async (req, res) => {
   try {
-    const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + GEMINI_API_KEY,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: "Dame 3 ángulos de venta para un suplemento natural para hombres" }
-              ]
-            }
-          ]
-        })
-      }
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+    const result = await model.generateContent(
+      "Dame 3 ángulos de venta para un suplemento natural para hombres"
     );
 
-    const data = await response.json();
-    res.json({ success: true, data });
+    const response = result.response.text();
+
+    res.json({
+      success: true,
+      result: response
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
