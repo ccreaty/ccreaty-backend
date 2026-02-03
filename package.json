@@ -1,7 +1,7 @@
 {
-  "name": "creaty-ai-backend",
+  "name": "ccreaty-backend",
   "version": "1.0.0",
-  "description": "Backend para generación de imágenes con Gemini (Vertex AI)",
+  "description": "Backend Ccreaty - Gemini & AI Services",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -11,9 +11,9 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@google-cloud/vertexai": "^1.42.0",
     "express": "^4.19.2",
     "cors": "^2.8.5",
-    "multer": "^1.4.5-lts.1"
+    "dotenv": "^16.4.5",
+    "@google/generative-ai": "^0.21.0"
   }
 }
