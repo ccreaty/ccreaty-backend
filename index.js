@@ -1,13 +1,15 @@
 import express from "express";
-import cors from "cors";
+import fetch from "node-fetch";
 
 const app = express();
+app.use(express.json());
 
-// -------------------- MIDDLEWARE --------------------
-app.use(cors());
-app.use(express.json({ limit: "10mb" }));
+const PORT = process.env.PORT || 3000;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// -------------------- HEALTH CHECK --------------------
+/* =========================
+   RUTA BASE (TEST)
+========================= */
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -15,32 +17,21 @@ app.get("/", (req, res) => {
   });
 });
 
-// -------------------- TEST GEMINI --------------------
+/* =========================
+   TEST GEMINI REAL
+========================= */
 app.get("/test-gemini", async (req, res) => {
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      return res.status(500).json({
-        error: "GEMINI_API_KEY no definida en Railway"
-      });
-    }
-
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + GEMINI_API_KEY,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [
             {
-              role: "user",
               parts: [
-                {
-                  text: "Dame 3 ángulos de venta para un suplemento natural para hombres"
-                }
+                { text: "Dame 3 ángulos de venta para un suplemento natural para hombres" }
               ]
             }
           ]
@@ -49,12 +40,7 @@ app.get("/test-gemini", async (req, res) => {
     );
 
     const data = await response.json();
-
-    res.json({
-      success: true,
-      geminiResponse: data
-    });
-
+    res.json({ success: true, data });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -63,10 +49,9 @@ app.get("/test-gemini", async (req, res) => {
   }
 });
 
-// -------------------- START SERVER --------------------
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Backend CCREATY corriendo en puerto ${PORT}`);
+/* =========================
+   START SERVER
+========================= */
+app.listen(PORT, () => {
+  console.log(`🚀 Backend corriendo en puerto ${PORT}`);
 });
-
