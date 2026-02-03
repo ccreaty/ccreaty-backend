@@ -4,15 +4,15 @@ const crypto = require("crypto");
 
 const app = express();
 
-/* ===========================
+/* =========================
    MIDDLEWARE
-=========================== */
+========================= */
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-/* ===========================
+/* =========================
    HEALTH CHECK
-=========================== */
+========================= */
 app.get("/", (req, res) => {
   res.status(200).json({
     status: "ok",
@@ -20,23 +20,21 @@ app.get("/", (req, res) => {
   });
 });
 
-/* ===========================
-   IN-MEMORY JOB STORE
-   (temporal – luego DB)
-=========================== */
+/* =========================
+   TEMP JOB STORE (MEMORIA)
+========================= */
 const jobs = {};
 
-/* ===========================
+/* =========================
    ANALYZE ENDPOINT
-=========================== */
+========================= */
 app.post("/analyze", async (req, res) => {
   try {
     const { projectId, imageUrl } = req.body;
 
     if (!projectId || !imageUrl) {
       return res.status(400).json({
-        status: "error",
-        message: "projectId and imageUrl are required"
+        error: "projectId and imageUrl are required"
       });
     }
 
@@ -71,38 +69,45 @@ app.post("/analyze", async (req, res) => {
         }
       ]
     });
-  } catch (error) {
-    console.error("Analyze error:", error);
-    return res.status(500).json({
-      status: "error",
-      message: "Analyze failed"
-    });
+  } catch (err) {
+    console.error("Analyze error:", err);
+    res.status(500).json({ error: "Analyze failed" });
   }
 });
 
-/* ===========================
+/* =========================
    GENERATE ENDPOINT (ASYNC)
-=========================== */
+========================= */
 app.post("/generate", async (req, res) => {
   try {
     const { projectId, analysisId, selectedAngleId, task } = req.body;
 
     if (!projectId || !analysisId || !selectedAngleId || !task) {
       return res.status(400).json({
-        status: "error",
-        message: "Missing required fields"
+        error: "Missing required fields"
       });
     }
 
     const jobId = crypto.randomUUID();
 
     jobs[jobId] = {
+      id: jobId,
       status: "pending",
       task,
       createdAt: Date.now()
     };
 
+    /* RESPUESTA COMPATIBLE CON LOVABLE */
+    res.status(200).json({
+      id: jobId,        // 👈 CLAVE PARA LOVABLE
+      jobId: jobId,     // 👈 TU SISTEMA
+      status: "pending"
+    });
+
+    /* SIMULACIÓN ASYNC */
     setTimeout(() => {
+      if (!jobs[jobId]) return;
+
       jobs[jobId].status = "done";
 
       if (task === "image") {
@@ -121,55 +126,46 @@ app.post("/generate", async (req, res) => {
 
       if (task === "landing") {
         jobs[jobId].result = {
-          landingSections: [
+          sections: [
             "Hero",
-            "BeforeAfter",
+            "Before & After",
             "Benefits",
             "Ingredients",
             "Offer",
-            "HowToUse",
-            "ProductAsSolution"
+            "How To Use",
+            "Product As The Solution"
           ]
         };
       }
-    }, 5000);
-
-    return res.status(200).json({
-      jobId,
-      status: "pending"
-    });
-  } catch (error) {
-    console.error("Generate error:", error);
-    return res.status(500).json({
-      status: "error",
-      message: "Generate failed"
-    });
+    }, 4000);
+  } catch (err) {
+    console.error("Generate error:", err);
+    res.status(500).json({ error: "Generate failed" });
   }
 });
 
-/* ===========================
+/* =========================
    JOB STATUS ENDPOINT
-=========================== */
+========================= */
 app.get("/job/:id", (req, res) => {
   const job = jobs[req.params.id];
 
   if (!job) {
     return res.status(404).json({
-      status: "error",
-      message: "Job not found"
+      error: "Job not found"
     });
   }
 
-  return res.status(200).json(job);
+  res.status(200).json(job);
 });
 
-/* ===========================
-   SERVER START (RAILWAY)
-=========================== */
+/* =========================
+   START SERVER (RAILWAY)
+========================= */
 const PORT = process.env.PORT;
 
 if (!PORT) {
-  console.error("❌ PORT no definido por Railway");
+  console.error("❌ PORT no definido");
   process.exit(1);
 }
 
