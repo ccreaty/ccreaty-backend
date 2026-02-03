@@ -1,174 +1,124 @@
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
-const crypto = require("crypto");
 
 const app = express();
 
-/* =========================
-   MIDDLEWARE
-========================= */
+// -------------------- MIDDLEWARE --------------------
 app.use(cors());
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
-/* =========================
-   HEALTH CHECK
-========================= */
+// Evita requests colgados
+app.use((req, res, next) => {
+  res.setTimeout(120000); // 120 segundos
+  next();
+});
+
+// -------------------- HEALTH CHECK --------------------
 app.get("/", (req, res) => {
   res.status(200).json({
     status: "ok",
-    message: "CCREATY backend activo 🚀"
+    message: "Backend CCREATY activo 🚀",
+    timestamp: new Date().toISOString()
   });
 });
 
-/* =========================
-   TEMP JOB STORE (MEMORIA)
-========================= */
-const jobs = {};
+// -------------------- ASK (copys / texto) --------------------
+app.post("/ask", (req, res) => {
+  const { question } = req.body;
 
-/* =========================
-   ANALYZE ENDPOINT
-========================= */
-app.post("/analyze", async (req, res) => {
-  try {
-    const { projectId, imageUrl } = req.body;
+  if (!question || typeof question !== "string") {
+    return res.status(400).json({
+      status: "error",
+      message: "El campo 'question' es obligatorio"
+    });
+  }
 
-    if (!projectId || !imageUrl) {
-      return res.status(400).json({
-        error: "projectId and imageUrl are required"
-      });
-    }
+  res.json({
+    status: "ok",
+    answer: `Pregunta recibida: ${question}`
+  });
+});
 
-    const analysisId = crypto.randomUUID();
+// -------------------- ANALYZE PRODUCT --------------------
+app.post("/analyze", (req, res) => {
+  const { projectId, imageUrl } = req.body;
 
-    return res.status(200).json({
-      analysisId,
-      productAnalysis: {
-        whatItIs: "Liquid Vitamin B Complex",
-        mainProblem: "Low energy and vitamin deficiency",
-        mainDesire: "More daily energy and mental clarity",
-        idealCustomer: "Adults looking to improve energy levels"
-      },
-      winningAngles: [
-        {
-          id: "angle_1",
-          angleName: "Daily Energy Boost",
-          hook: "Feel energized in minutes",
-          coreEmotion: "Desire"
-        },
-        {
-          id: "angle_2",
-          angleName: "Mental Clarity",
-          hook: "Clear your mind naturally",
-          coreEmotion: "Confidence"
-        },
-        {
-          id: "angle_3",
-          angleName: "Vitamin Deficiency Solution",
-          hook: "Your body needs this",
-          coreEmotion: "Fear"
-        }
+  if (!projectId || !imageUrl) {
+    return res.status(400).json({
+      status: "error",
+      message: "Faltan campos: projectId o imageUrl"
+    });
+  }
+
+  // Respuesta MOCK para que el frontend no se quede cargando
+  res.json({
+    status: "ok",
+    analysisId: `analysis_${Date.now()}`,
+    productAnalysis: {
+      summary: "Producto recibido y analizado correctamente.",
+      notes: [
+        "Este es un análisis simulado.",
+        "Aquí se conectará Gemini más adelante."
       ]
-    });
-  } catch (err) {
-    console.error("Analyze error:", err);
-    res.status(500).json({ error: "Analyze failed" });
-  }
+    },
+    winningAngles: [
+      {
+        id: "angle_1",
+        title: "Beneficio principal",
+        hook: "Descubre el secreto que nadie te cuenta",
+        promise: "Resultados visibles en poco tiempo"
+      },
+      {
+        id: "angle_2",
+        title: "Prueba social",
+        hook: "Miles ya lo están usando",
+        promise: "Confianza real y comprobada"
+      },
+      {
+        id: "angle_3",
+        title: "Urgencia",
+        hook: "Últimas unidades disponibles",
+        promise: "No te quedes por fuera"
+      }
+    ]
+  });
 });
 
-/* =========================
-   GENERATE ENDPOINT (ASYNC)
-========================= */
-app.post("/generate", async (req, res) => {
-  try {
-    const { projectId, analysisId, selectedAngleId, task } = req.body;
+// -------------------- IMAGE GENERATION (placeholder Gemini) --------------------
+app.post("/ai/image", (req, res) => {
+  const { prompt, referenceImage } = req.body;
 
-    if (!projectId || !analysisId || !selectedAngleId || !task) {
-      return res.status(400).json({
-        error: "Missing required fields"
-      });
-    }
-
-    const jobId = crypto.randomUUID();
-
-    jobs[jobId] = {
-      id: jobId,
-      status: "pending",
-      task,
-      createdAt: Date.now()
-    };
-
-    /* RESPUESTA COMPATIBLE CON LOVABLE */
-    res.status(200).json({
-      id: jobId,        // 👈 CLAVE PARA LOVABLE
-      jobId: jobId,     // 👈 TU SISTEMA
-      status: "pending"
-    });
-
-    /* SIMULACIÓN ASYNC */
-    setTimeout(() => {
-      if (!jobs[jobId]) return;
-
-      jobs[jobId].status = "done";
-
-      if (task === "image") {
-        jobs[jobId].result = {
-          imageUrl:
-            "https://via.placeholder.com/600x600.png?text=Generated+Image"
-        };
-      }
-
-      if (task === "video") {
-        jobs[jobId].result = {
-          videoUrl:
-            "https://www.w3schools.com/html/mov_bbb.mp4"
-        };
-      }
-
-      if (task === "landing") {
-        jobs[jobId].result = {
-          sections: [
-            "Hero",
-            "Before & After",
-            "Benefits",
-            "Ingredients",
-            "Offer",
-            "How To Use",
-            "Product As The Solution"
-          ]
-        };
-      }
-    }, 4000);
-  } catch (err) {
-    console.error("Generate error:", err);
-    res.status(500).json({ error: "Generate failed" });
-  }
-});
-
-/* =========================
-   JOB STATUS ENDPOINT
-========================= */
-app.get("/job/:id", (req, res) => {
-  const job = jobs[req.params.id];
-
-  if (!job) {
-    return res.status(404).json({
-      error: "Job not found"
+  if (!prompt) {
+    return res.status(400).json({
+      status: "error",
+      message: "El campo 'prompt' es obligatorio"
     });
   }
 
-  res.status(200).json(job);
+  res.json({
+    status: "ok",
+    jobId: `img_${Date.now()}`,
+    message: "Generación de imagen en proceso (simulada)",
+    prompt,
+    referenceImage: referenceImage || null
+  });
 });
 
-/* =========================
-   START SERVER (RAILWAY)
-========================= */
-const PORT = process.env.PORT;
+// -------------------- 404 --------------------
+app.use((req, res) => {
+  res.status(404).json({
+    status: "error",
+    message: `Ruta no encontrada: ${req.method} ${req.path}`
+  });
+});
 
-if (!PORT) {
-  console.error("❌ PORT no definido");
-  process.exit(1);
-}
+// -------------------- START SERVER --------------------
+const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Backend escuchando en puerto ${PORT}`);
+  console.log(`✅ Servidor activo en puerto ${PORT}`);
 });
+
