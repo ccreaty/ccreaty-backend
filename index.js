@@ -94,9 +94,7 @@ app.get("/test-image", async (req, res) => {
               "Foto publicitaria realista de un frasco de suplemento natural para hombres, fondo blanco, iluminación profesional, estilo ecommerce premium",
           },
         ],
-        parameters: {
-          sampleCount: 1,
-        },
+        parameters: { sampleCount: 1 },
       }),
     });
 
@@ -191,15 +189,6 @@ app.post("/generate-image", async (req, res) => {
 
     const imageBase64 = data.predictions?.[0]?.bytesBase64Encoded;
 
-    if (!imageBase64) {
-      return res.status(500).json({
-        success: false,
-        error: "No se recibió bytesBase64Encoded desde Vertex AI",
-        raw: data,
-        prompt_used: prompt,
-      });
-    }
-
     res.json({
       success: true,
       prompt_used: prompt,
@@ -215,11 +204,16 @@ app.post("/generate-image", async (req, res) => {
 });
 
 /* ======================
-   VIDEO GENERATION (RUNWAY)
+   VIDEO GENERATION (RUNWAY API)
 ====================== */
 app.post("/generate-video", async (req, res) => {
   try {
-    const { image_url, prompt, duration = 10 } = req.body;
+    const {
+      image_url,
+      prompt,
+      duration = 10,
+      ratio = "720:1280", // ratio válido
+    } = req.body;
 
     if (!image_url || !prompt) {
       return res.status(400).json({
@@ -239,9 +233,10 @@ app.post("/generate-video", async (req, res) => {
         },
         body: JSON.stringify({
           model: "gen4_turbo",
-          promptImage: image_url,
+          promptImage: [image_url], // DEBE SER ARRAY
           promptText: prompt,
           duration: duration,
+          ratio: ratio,
         }),
       }
     );
