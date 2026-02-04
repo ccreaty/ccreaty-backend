@@ -7,8 +7,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Modelo estable para API Key (Generative Language API)
-const MODEL = process.env.GEMINI_MODEL || "gemini-1.0-pro";
+// MODELO VÁLIDO HOY PARA API KEY
+const MODEL = "gemini-1.5-flash";
 
 app.use(cors());
 app.use(express.json());
@@ -26,74 +26,68 @@ app.get("/", (req, res) => {
 });
 
 /* ======================
-   GEMINI TEST (REST v1)
+   GEMINI TEST (ÚNICO VÁLIDO)
 ====================== */
 app.get("/test-gemini", async (req, res) => {
   try {
-    const key = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
 
-    if (!key) {
+    if (!apiKey) {
       return res.status(500).json({
         success: false,
-        error: "GEMINI_API_KEY no configurada en Railway",
+        error: "GEMINI_API_KEY no configurada",
       });
     }
 
     const url =
-      `https://generativelanguage.googleapis.com/v1/models/${MODEL}:generateContent?key=` +
-      encodeURIComponent(key);
-
-    const payload = {
-      contents: [
-        {
-          parts: [
-            {
-              text: "Dame 3 ángulos de venta para un suplemento natural para hombres",
-            },
-          ],
-        },
-      ],
-    };
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=` +
+      apiKey;
 
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: "Dame 3 ángulos de venta para un suplemento natural para hombres",
+              },
+            ],
+          },
+        ],
+      }),
     });
 
     const data = await response.json();
 
-    // Log completo en Railway para ver qué está pasando
-    console.log("✅ Gemini request model:", MODEL);
-    console.log("✅ Gemini response status:", response.status);
-    console.log("✅ Gemini response body:", JSON.stringify(data));
+    console.log("🔹 Gemini status:", response.status);
+    console.log("🔹 Gemini response:", JSON.stringify(data));
 
     if (!response.ok) {
       return res.status(500).json({
         success: false,
         model: MODEL,
-        status: response.status,
         error: data,
       });
     }
 
-    const text =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ??
-      "(Sin texto en respuesta)";
-
-    res.json({ success: true, model: MODEL, result: text });
-  } catch (error) {
-    console.error("❌ Error Gemini catch:", error);
+    res.json({
+      success: true,
+      model: MODEL,
+      result: data.candidates[0].content.parts[0].text,
+    });
+  } catch (err) {
+    console.error("❌ Gemini error:", err);
     res.status(500).json({
       success: false,
-      model: MODEL,
-      error: error?.message || String(error),
+      error: err.message,
     });
   }
 });
 
 /* ======================
-   404 HANDLER
+   404
 ====================== */
 app.use((req, res) => {
   res.status(404).json({
@@ -107,5 +101,4 @@ app.use((req, res) => {
 ====================== */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🧠 Gemini MODEL: ${MODEL}`);
 });
