@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 dotenv.config();
 
@@ -22,7 +21,7 @@ app.get("/", (req, res) => {
 });
 
 /* ======================
-   GEMINI TEST
+   GEMINI TEST (REST v1)
 ====================== */
 app.get("/test-gemini", async (req, res) => {
   try {
@@ -33,23 +32,43 @@ app.get("/test-gemini", async (req, res) => {
       });
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-    // ✅ MODELO CORRECTO PARA v1beta
-    const model = genAI.getGenerativeModel({
-      model: "models/gemini-1.5-flash",
-    });
-
-    const result = await model.generateContent(
-      "Dame 3 ángulos de venta para un suplemento natural para hombres"
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" +
+        process.env.GEMINI_API_KEY,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: "Dame 3 ángulos de venta para un suplemento natural para hombres",
+                },
+              ],
+            },
+          ],
+        }),
+      }
     );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(500).json({
+        success: false,
+        error: data,
+      });
+    }
 
     res.json({
       success: true,
-      result: result.response.text(),
+      result: data.candidates[0].content.parts[0].text,
     });
   } catch (error) {
-    console.error("❌ Error Gemini:", error.message);
+    console.error("❌ Error Gemini:", error);
     res.status(500).json({
       success: false,
       error: error.message,
