@@ -204,7 +204,7 @@ app.post("/generate-image", async (req, res) => {
 });
 
 /* ======================
-   VIDEO GENERATION (RUNWAY API) - FINAL
+   VIDEO GENERATION (RUNWAY API) - FINAL SCHEMA
 ====================== */
 app.post("/generate-video", async (req, res) => {
   try {
@@ -228,10 +228,12 @@ app.post("/generate-video", async (req, res) => {
         },
         body: JSON.stringify({
           model: "gen4_turbo",
-          promptImageUrl: image_url,   // CAMPO CORRECTO
+          promptImage: [
+            { uri: image_url }   // 👈 FORMATO CORRECTO
+          ],
           promptText: prompt,
           duration: duration,
-          ratio: "720:1280",           // RATIO VÁLIDO
+          ratio: "720:1280",
         }),
       }
     );
