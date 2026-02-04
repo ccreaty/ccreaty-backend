@@ -7,8 +7,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// MODELO VÁLIDO HOY PARA API KEY
-const MODEL = "gemini-1.5-flash";
+// MODELO ACTIVO ACTUAL (API KEY)
+const MODEL = "gemini-2.0-flash";
 
 app.use(cors());
 app.use(express.json());
@@ -26,7 +26,7 @@ app.get("/", (req, res) => {
 });
 
 /* ======================
-   GEMINI TEST (ÚNICO VÁLIDO)
+   GEMINI TEST (FINAL)
 ====================== */
 app.get("/test-gemini", async (req, res) => {
   try {
@@ -40,8 +40,7 @@ app.get("/test-gemini", async (req, res) => {
     }
 
     const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=` +
-      apiKey;
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
       method: "POST",
@@ -61,9 +60,6 @@ app.get("/test-gemini", async (req, res) => {
 
     const data = await response.json();
 
-    console.log("🔹 Gemini status:", response.status);
-    console.log("🔹 Gemini response:", JSON.stringify(data));
-
     if (!response.ok) {
       return res.status(500).json({
         success: false,
@@ -78,7 +74,6 @@ app.get("/test-gemini", async (req, res) => {
       result: data.candidates[0].content.parts[0].text,
     });
   } catch (err) {
-    console.error("❌ Gemini error:", err);
     res.status(500).json({
       success: false,
       error: err.message,
@@ -97,7 +92,7 @@ app.use((req, res) => {
 });
 
 /* ======================
-   START SERVER
+   START
 ====================== */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
