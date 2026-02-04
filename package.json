@@ -1,19 +1,16 @@
 {
   "name": "ccreaty-backend",
   "version": "1.0.0",
-  "description": "Backend Ccreaty - Vertex AI Imagen",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "engines": {
-    "node": ">=18"
-  },
   "dependencies": {
     "express": "^4.19.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "google-auth-library": "^9.8.0"
+    "node-fetch": "^3.3.2",
+    "jsonwebtoken": "^9.0.2"
   }
 }
