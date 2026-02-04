@@ -26,7 +26,9 @@ app.get("/", (req, res) => {
    AUTH: GOOGLE ACCESS TOKEN
 ====================== */
 async function getAccessToken() {
-  const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+  const credentials = JSON.parse(
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
+  );
 
   const now = Math.floor(Date.now() / 1000);
 
@@ -92,19 +94,14 @@ app.get("/test-image", async (req, res) => {
               "Foto publicitaria realista de un frasco de suplemento natural para hombres, fondo blanco, iluminación profesional, estilo ecommerce premium",
           },
         ],
-        parameters: {
-          sampleCount: 1,
-        },
+        parameters: { sampleCount: 1 },
       }),
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(500).json({
-        success: false,
-        error: data,
-      });
+      return res.status(500).json({ success: false, error: data });
     }
 
     const imageBase64 = data.predictions?.[0]?.bytesBase64Encoded;
@@ -115,26 +112,12 @@ app.get("/test-image", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Image error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /* ======================
    IMAGE GENERATION (IMAGEN 3) - DYNAMIC
-   POST /generate-image
-   Body JSON:
-   {
-     "productName": "Shilajit Premium",
-     "productType": "natural supplement for men",
-     "style": "ecommerce premium",
-     "background": "white",
-     "colors": "black and gold",
-     "vibe": "ultra realistic, luxury, professional",
-     "extra": "optional extra instructions"
-   }
 ====================== */
 app.post("/generate-image", async (req, res) => {
   try {
@@ -160,7 +143,6 @@ app.post("/generate-image", async (req, res) => {
       extra = "",
     } = req.body || {};
 
-    // Prompt dinámico (controlado y consistente)
     const prompt = [
       "High-quality, ultra realistic product advertising photo.",
       `Product name: ${productName}.`,
@@ -170,7 +152,7 @@ app.post("/generate-image", async (req, res) => {
       `Color palette: ${colors}.`,
       `Mood: ${vibe}.`,
       extra ? `Extra instructions: ${extra}.` : "",
-      "Professional studio lighting, sharp focus, realistic shadows, no cartoon, no illustration, no text on image, premium ecommerce look."
+      "Professional studio lighting, sharp focus, realistic shadows, no cartoon, no illustration, no text on image, premium ecommerce look.",
     ]
       .filter(Boolean)
       .join(" ");
@@ -204,9 +186,7 @@ app.post("/generate-image", async (req, res) => {
     if (!imageBase64) {
       return res.status(500).json({
         success: false,
-        error: "No se recibió bytesBase64Encoded desde Vertex AI (Imagen 3).",
-        raw: data,
-        prompt_used: prompt,
+        error: "No se recibió bytesBase64Encoded desde Imagen 3",
       });
     }
 
@@ -217,10 +197,93 @@ app.post("/generate-image", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Dynamic image error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/* ======================
+   RUNWAY - CREATE VIDEO
+====================== */
+app.post("/generate-video", async (req, res) => {
+  try {
+    const { image_url, prompt, duration } = req.body;
+
+    if (!image_url || !prompt || !duration) {
+      return res.status(400).json({
+        success: false,
+        error: "image_url, prompt y duration son obligatorios",
+      });
+    }
+
+    if (![10, 20].includes(Number(duration))) {
+      return res.status(400).json({
+        success: false,
+        error: "La duración debe ser 10 o 20 segundos",
+      });
+    }
+
+    const response = await fetch(
+      "https://api.runwayml.com/v1/image_to_video",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RUNWAY_API_KEY}`,
+          "Content-Type": "application/json",
+          "X-Runway-Version": process.env.RUNWAY_API_VERSION,
+        },
+        body: JSON.stringify({
+          model: "gen4_turbo",
+          promptImage: image_url,
+          promptText: prompt,
+          duration: Number(duration),
+          ratio: "720:1280",
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(500).json({ success: false, error: data });
+    }
+
+    res.json({
+      success: true,
+      task_id: data.id,
     });
+  } catch (error) {
+    console.error("❌ Runway generate-video error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/* ======================
+   RUNWAY - VIDEO STATUS
+====================== */
+app.get("/video-status/:taskId", async (req, res) => {
+  try {
+    const { taskId } = req.params;
+
+    const response = await fetch(
+      `https://api.runwayml.com/v1/tasks/${taskId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.RUNWAY_API_KEY}`,
+          "X-Runway-Version": process.env.RUNWAY_API_VERSION,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(500).json({ success: false, error: data });
+    }
+
+    res.json({ success: true, task: data });
+  } catch (error) {
+    console.error("❌ Runway status error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
