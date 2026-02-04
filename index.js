@@ -26,9 +26,7 @@ app.get("/", (req, res) => {
    AUTH: GOOGLE ACCESS TOKEN
 ====================== */
 async function getAccessToken() {
-  const credentials = JSON.parse(
-    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
-  );
+  const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
 
   const now = Math.floor(Date.now() / 1000);
 
@@ -63,7 +61,7 @@ async function getAccessToken() {
 }
 
 /* ======================
-   IMAGE GENERATION (IMAGEN 3)
+   IMAGE GENERATION (IMAGEN 3) - TEST
 ====================== */
 app.get("/test-image", async (req, res) => {
   try {
@@ -71,6 +69,13 @@ app.get("/test-image", async (req, res) => {
 
     const projectId = process.env.GCP_PROJECT_ID;
     const location = process.env.GCP_LOCATION || "us-central1";
+
+    if (!projectId) {
+      return res.status(500).json({
+        success: false,
+        error: "Falta la variable GCP_PROJECT_ID en Railway",
+      });
+    }
 
     const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-generate-001:predict`;
 
@@ -102,8 +107,7 @@ app.get("/test-image", async (req, res) => {
       });
     }
 
-    const imageBase64 =
-      data.predictions?.[0]?.bytesBase64Encoded;
+    const imageBase64 = data.predictions?.[0]?.bytesBase64Encoded;
 
     res.json({
       success: true,
@@ -111,6 +115,108 @@ app.get("/test-image", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Image error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/* ======================
+   IMAGE GENERATION (IMAGEN 3) - DYNAMIC
+   POST /generate-image
+   Body JSON:
+   {
+     "productName": "Shilajit Premium",
+     "productType": "natural supplement for men",
+     "style": "ecommerce premium",
+     "background": "white",
+     "colors": "black and gold",
+     "vibe": "ultra realistic, luxury, professional",
+     "extra": "optional extra instructions"
+   }
+====================== */
+app.post("/generate-image", async (req, res) => {
+  try {
+    const accessToken = await getAccessToken();
+
+    const projectId = process.env.GCP_PROJECT_ID;
+    const location = process.env.GCP_LOCATION || "us-central1";
+
+    if (!projectId) {
+      return res.status(500).json({
+        success: false,
+        error: "Falta la variable GCP_PROJECT_ID en Railway",
+      });
+    }
+
+    const {
+      productName = "Supplement",
+      productType = "natural supplement",
+      style = "ecommerce premium",
+      background = "white background",
+      colors = "neutral tones",
+      vibe = "ultra realistic, professional lighting, sharp focus",
+      extra = "",
+    } = req.body || {};
+
+    // Prompt dinámico (controlado y consistente)
+    const prompt = [
+      "High-quality, ultra realistic product advertising photo.",
+      `Product name: ${productName}.`,
+      `Product type: ${productType}.`,
+      `Style: ${style}.`,
+      `Background: ${background}.`,
+      `Color palette: ${colors}.`,
+      `Mood: ${vibe}.`,
+      extra ? `Extra instructions: ${extra}.` : "",
+      "Professional studio lighting, sharp focus, realistic shadows, no cartoon, no illustration, no text on image, premium ecommerce look."
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-generate-001:predict`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        instances: [{ prompt }],
+        parameters: { sampleCount: 1 },
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(500).json({
+        success: false,
+        error: data,
+        prompt_used: prompt,
+      });
+    }
+
+    const imageBase64 = data.predictions?.[0]?.bytesBase64Encoded;
+
+    if (!imageBase64) {
+      return res.status(500).json({
+        success: false,
+        error: "No se recibió bytesBase64Encoded desde Vertex AI (Imagen 3).",
+        raw: data,
+        prompt_used: prompt,
+      });
+    }
+
+    res.json({
+      success: true,
+      prompt_used: prompt,
+      image_base64: imageBase64,
+    });
+  } catch (error) {
+    console.error("❌ Dynamic image error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
