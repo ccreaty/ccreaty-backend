@@ -23,7 +23,7 @@ app.get("/", (req, res) => {
 });
 
 /* ======================
-   AUTH: GOOGLE ACCESS TOKEN
+   GOOGLE AUTH (VERTEX AI)
 ====================== */
 async function getAccessToken() {
   const credentials = JSON.parse(
@@ -72,13 +72,6 @@ app.get("/test-image", async (req, res) => {
     const projectId = process.env.GCP_PROJECT_ID;
     const location = process.env.GCP_LOCATION || "us-central1";
 
-    if (!projectId) {
-      return res.status(500).json({
-        success: false,
-        error: "Falta la variable GCP_PROJECT_ID en Railway",
-      });
-    }
-
     const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-generate-001:predict`;
 
     const response = await fetch(endpoint, {
@@ -91,7 +84,7 @@ app.get("/test-image", async (req, res) => {
         instances: [
           {
             prompt:
-              "Foto publicitaria realista de un frasco de suplemento natural para hombres, fondo blanco, iluminación profesional, estilo ecommerce premium",
+              "Foto publicitaria realista de un suplemento natural, iluminación profesional, fondo limpio, ecommerce premium",
           },
         ],
         parameters: { sampleCount: 1 },
@@ -101,24 +94,15 @@ app.get("/test-image", async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(500).json({
-        success: false,
-        error: data,
-      });
+      return res.status(500).json({ success: false, error: data });
     }
-
-    const imageBase64 = data.predictions?.[0]?.bytesBase64Encoded;
 
     res.json({
       success: true,
-      image_base64: imageBase64,
+      image_base64: data.predictions?.[0]?.bytesBase64Encoded,
     });
   } catch (error) {
-    console.error("❌ Image error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -132,36 +116,21 @@ app.post("/generate-image", async (req, res) => {
     const projectId = process.env.GCP_PROJECT_ID;
     const location = process.env.GCP_LOCATION || "us-central1";
 
-    if (!projectId) {
-      return res.status(500).json({
-        success: false,
-        error: "Falta la variable GCP_PROJECT_ID en Railway",
-      });
-    }
-
     const {
       productName = "Supplement",
       productType = "natural supplement",
-      style = "ecommerce premium",
-      background = "white background",
       colors = "neutral tones",
-      vibe = "ultra realistic, professional lighting, sharp focus",
       extra = "",
     } = req.body || {};
 
-    const prompt = [
-      "High-quality, ultra realistic product advertising photo.",
-      `Product name: ${productName}.`,
-      `Product type: ${productType}.`,
-      `Style: ${style}.`,
-      `Background: ${background}.`,
-      `Color palette: ${colors}.`,
-      `Mood: ${vibe}.`,
-      extra ? `Extra instructions: ${extra}.` : "",
-      "Professional studio lighting, sharp focus, realistic shadows, no cartoon, no illustration, no text on image, premium ecommerce look.",
-    ]
-      .filter(Boolean)
-      .join(" ");
+    const prompt = `
+High-quality ultra realistic product advertising photo.
+Product name: ${productName}.
+Product type: ${productType}.
+Color palette: ${colors}.
+${extra}
+Professional lighting, realistic shadows, no text, no illustration, premium ecommerce look.
+    `.trim();
 
     const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-generate-001:predict`;
 
@@ -180,31 +149,21 @@ app.post("/generate-image", async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(500).json({
-        success: false,
-        error: data,
-        prompt_used: prompt,
-      });
+      return res.status(500).json({ success: false, error: data });
     }
-
-    const imageBase64 = data.predictions?.[0]?.bytesBase64Encoded;
 
     res.json({
       success: true,
       prompt_used: prompt,
-      image_base64: imageBase64,
+      image_base64: data.predictions?.[0]?.bytesBase64Encoded,
     });
   } catch (error) {
-    console.error("❌ Dynamic image error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /* ======================
-   VIDEO GENERATION (RUNWAY API) - FINAL SCHEMA
+   VIDEO GENERATION (RUNWAY) – FINAL
 ====================== */
 app.post("/generate-video", async (req, res) => {
   try {
@@ -228,9 +187,7 @@ app.post("/generate-video", async (req, res) => {
         },
         body: JSON.stringify({
           model: "gen4_turbo",
-          promptImage: [
-            { uri: image_url }   // 👈 FORMATO CORRECTO
-          ],
+          promptImage: image_url,   // 👈 STRING (FORMA CORRECTA)
           promptText: prompt,
           duration: duration,
           ratio: "720:1280",
@@ -241,10 +198,7 @@ app.post("/generate-video", async (req, res) => {
     const data = await runwayResponse.json();
 
     if (!runwayResponse.ok) {
-      return res.status(500).json({
-        success: false,
-        error: data,
-      });
+      return res.status(500).json({ success: false, error: data });
     }
 
     res.json({
@@ -252,11 +206,7 @@ app.post("/generate-video", async (req, res) => {
       task_id: data.id,
     });
   } catch (error) {
-    console.error("❌ Runway video error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -264,15 +214,12 @@ app.post("/generate-video", async (req, res) => {
    404
 ====================== */
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: "Ruta no encontrada",
-  });
+  res.status(404).json({ success: false, error: "Ruta no encontrada" });
 });
 
 /* ======================
    START SERVER
 ====================== */
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 CCREATY backend running on port ${PORT}`);
 });
