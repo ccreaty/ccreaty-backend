@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { VertexAI } from "@google-cloud/vertexai";
+import { GoogleAuth } from "google-auth-library";
 
 dotenv.config();
 
@@ -11,9 +11,9 @@ const PORT = process.env.PORT || 8080;
 app.use(cors());
 app.use(express.json());
 
-// ======================
-// HEALTH CHECK
-// ======================
+/* ======================
+   HEALTH CHECK
+====================== */
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -21,51 +21,60 @@ app.get("/", (req, res) => {
   });
 });
 
-// ======================
-// VERTEX AI IMAGE (NANO BANANA)
-// ======================
+/* ======================
+   TEST IMAGE (VERTEX AI IMAGEN)
+====================== */
 app.get("/test-image", async (req, res) => {
   try {
-    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+    const auth = new GoogleAuth({
+      credentials: JSON.parse(
+        process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
+      ),
+      scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+    });
+
+    const client = await auth.getClient();
+    const token = await client.getAccessToken();
+
+    const projectId = process.env.GCP_PROJECT_ID;
+    const location = process.env.GCP_LOCATION || "us-central1";
+
+    const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagegeneration@006:predict`;
+
+    const body = {
+      instances: [
+        {
+          prompt: "Foto realista de un suplemento natural premium sobre fondo blanco, estilo e-commerce",
+        },
+      ],
+      parameters: {
+        sampleCount: 1,
+      },
+    };
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
       return res.status(500).json({
         success: false,
-        error: "Credenciales de Google no configuradas",
+        error: data,
       });
     }
 
-    // Convertimos el JSON en credencial real
-    const credentials = JSON.parse(
-      process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
-    );
-
-    const vertexAI = new VertexAI({
-      project: credentials.project_id,
-      location: "us-central1",
-      credentials,
-    });
-
-    const model = vertexAI.getGenerativeModel({
-      model: "imagegeneration@002", // Nano Banana (Imagen)
-    });
-
-    const prompt =
-      "Un frasco de suplemento natural para hombres, estilo premium, fondo blanco, iluminación profesional, realista";
-
-    const response = await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
-        },
-      ],
-    });
-
-    const imageBase64 =
-      response.response.candidates[0].content.parts[0].inlineData.data;
+    const base64Image = data.predictions[0].bytesBase64Encoded;
 
     res.json({
       success: true,
-      image_base64: imageBase64,
+      image_base64: base64Image,
     });
   } catch (error) {
     console.error("❌ Error Imagen:", error);
@@ -76,9 +85,9 @@ app.get("/test-image", async (req, res) => {
   }
 });
 
-// ======================
-// 404 HANDLER
-// ======================
+/* ======================
+   404
+====================== */
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -86,9 +95,6 @@ app.use((req, res) => {
   });
 });
 
-// ======================
-// START SERVER
-// ======================
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
