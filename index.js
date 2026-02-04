@@ -163,7 +163,7 @@ Professional lighting, realistic shadows, no text, no illustration, premium ecom
 });
 
 /* ======================
-   VIDEO GENERATION (RUNWAY) – FINAL
+   VIDEO GENERATION (RUNWAY)
 ====================== */
 app.post("/generate-video", async (req, res) => {
   try {
@@ -187,7 +187,7 @@ app.post("/generate-video", async (req, res) => {
         },
         body: JSON.stringify({
           model: "gen4_turbo",
-          promptImage: image_url,   // 👈 STRING (FORMA CORRECTA)
+          promptImage: image_url, // STRING CORRECTO
           promptText: prompt,
           duration: duration,
           ratio: "720:1280",
@@ -211,10 +211,52 @@ app.post("/generate-video", async (req, res) => {
 });
 
 /* ======================
+   VIDEO STATUS (RUNWAY)
+====================== */
+app.get("/video-status/:taskId", async (req, res) => {
+  try {
+    const { taskId } = req.params;
+
+    const response = await fetch(
+      `https://api.dev.runwayml.com/v1/tasks/${taskId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.RUNWAY_API_KEY}`,
+          "X-Runway-Version": "2024-11-06",
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(500).json({
+        success: false,
+        error: data,
+      });
+    }
+
+    res.json({
+      success: true,
+      status: data.status,   // processing | completed | failed
+      output: data.output || null,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/* ======================
    404
 ====================== */
 app.use((req, res) => {
-  res.status(404).json({ success: false, error: "Ruta no encontrada" });
+  res.status(404).json({
+    success: false,
+    error: "Ruta no encontrada",
+  });
 });
 
 /* ======================
