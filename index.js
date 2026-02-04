@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 import jwt from "jsonwebtoken";
-import { v4 as uuidv4 } from "uuid";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -13,29 +13,27 @@ const PORT = process.env.PORT || 8080;
 app.use(cors());
 app.use(express.json());
 
-/* ======================================================
-   IN-MEMORY STORES (STABLE & EXPLICIT)
-   ====================================================== */
+/* ======================
+   UTILS
+====================== */
+function generateId() {
+  return crypto.randomUUID();
+}
 
-// Projects store
-const projects = new Map();
-
-// Jobs store (locks PER JOB, not per project)
-const jobs = new Map();
-
-/* ======================================================
+/* ======================
    HEALTH CHECK
-   ====================================================== */
+====================== */
 app.get("/", (req, res) => {
   res.json({
+    success: true,
     status: "ok",
     message: "CCREATY backend activo 🚀",
   });
 });
 
-/* ======================================================
-   GOOGLE ACCESS TOKEN (IMAGEN 3)
-   ====================================================== */
+/* ======================
+   GOOGLE AUTH (IMAGEN 3)
+====================== */
 async function getAccessToken() {
   const credentials = JSON.parse(
     process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
@@ -65,7 +63,6 @@ async function getAccessToken() {
   });
 
   const data = await response.json();
-
   if (!response.ok) {
     throw new Error(JSON.stringify(data));
   }
@@ -73,188 +70,141 @@ async function getAccessToken() {
   return data.access_token;
 }
 
-/* ======================================================
-   PROJECT INITIALIZATION (ONE PER PRODUCT)
-   ====================================================== */
-function getOrCreateProject(projectId, originalImageUrl) {
-  if (!projects.has(projectId)) {
-    projects.set(projectId, {
-      projectId,
-      originalImageUrl,
-      runwayImageUrl: null,
-      createdAt: Date.now(),
-    });
-  }
-  return projects.get(projectId);
-}
-
-/* ======================================================
-   JOB LOCKING (NO GLOBAL LOCKS)
-   ====================================================== */
-function startJob(jobId) {
-  jobs.set(jobId, { status: "running", startedAt: Date.now() });
-}
-
-function finishJob(jobId) {
-  jobs.set(jobId, { status: "done", finishedAt: Date.now() });
-}
-
-/* ======================================================
+/* ======================
    IMAGE GENERATION (IMAGEN 3)
-   ====================================================== */
+====================== */
 app.post("/generate-image", async (req, res) => {
-  const jobId = uuidv4();
-  startJob(jobId);
-
   try {
     const accessToken = await getAccessToken();
-    const projectId = req.body.projectId || "default-project";
 
-    const project = getOrCreateProject(
-      projectId,
-      req.body.originalImageUrl || null
-    );
+    const projectId = process.env.GCP_PROJECT_ID;
+    const location = process.env.GCP_LOCATION || "us-central1";
+
+    if (!projectId) {
+      return res.status(500).json({
+        success: false,
+        error: "Missing GCP_PROJECT_ID",
+      });
+    }
 
     const {
-      prompt = "Ultra realistic ecommerce product image",
+      productName = "Supplement",
+      productType = "natural supplement",
+      style = "ecommerce premium",
+      background = "white background",
+      colors = "neutral tones",
+      vibe = "ultra realistic, professional lighting",
+      extra = "",
+    } = req.body || {};
+
+    const prompt = [
+      "Ultra realistic product photography.",
+      `Product name: ${productName}.`,
+      `Product type: ${productType}.`,
+      `Style: ${style}.`,
+      `Background: ${background}.`,
+      `Color palette: ${colors}.`,
+      `Mood: ${vibe}.`,
+      extra ? `Extra: ${extra}.` : "",
+      "No text, no illustration, no distortion. Ecommerce quality.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-generate-001:predict`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        instances: [{ prompt }],
+        parameters: { sampleCount: 1 },
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(500).json({
+        success: false,
+        error: data,
+        prompt,
+      });
+    }
+
+    const imageBase64 = data.predictions?.[0]?.bytesBase64Encoded;
+
+    res.json({
+      success: true,
+      id: generateId(),
+      image_base64: imageBase64,
+      prompt_used: prompt,
+    });
+  } catch (error) {
+    console.error("❌iff Image error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/* ======================
+   RUNWAY – GENERATE VIDEO
+====================== */
+app.post("/generate-video", async (req, res) => {
+  try {
+    const {
+      image_url,
+      prompt,
+      duration = 10,
+      ratio = "720:1280",
     } = req.body;
 
-    const endpoint = `https://us-central1-aiplatform.googleapis.com/v1/projects/${process.env.GCP_PROJECT_ID}/locations/us-central1/publishers/google/models/imagen-3.0-generate-001:predict`;
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: { sampleCount: 1 },
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(JSON.stringify(data));
+    if (!image_url || !prompt) {
+      return res.status(400).json({
+        success: false,
+        error: "image_url and prompt are required",
+      });
     }
 
-    finishJob(jobId);
-
-    res.json({
-      success: true,
-      jobId,
-      image_base64: data.predictions?.[0]?.bytesBase64Encoded,
-    });
-  } catch (error) {
-    finishJob(jobId);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
-/* ======================================================
-   LANDING GENERATION (SEQUENTIAL SECTIONS)
-   ====================================================== */
-app.post("/generate-landing-section", async (req, res) => {
-  const jobId = uuidv4();
-  startJob(jobId);
-
-  try {
-    const { projectId, sectionName, prompt } = req.body;
-
-    if (!sectionName) {
-      throw new Error("Missing sectionName");
-    }
-
-    const accessToken = await getAccessToken();
-    const project = getOrCreateProject(projectId);
-
-    const endpoint = `https://us-central1-aiplatform.googleapis.com/v1/projects/${process.env.GCP_PROJECT_ID}/locations/us-central1/publishers/google/models/imagen-3.0-generate-001:predict`;
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: { sampleCount: 1 },
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(JSON.stringify(data));
-    }
-
-    finishJob(jobId);
-
-    res.json({
-      success: true,
-      section: sectionName,
-      image_base64: data.predictions?.[0]?.bytesBase64Encoded,
-    });
-  } catch (error) {
-    finishJob(jobId);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
-/* ======================================================
-   VIDEO GENERATION (RUNWAY – STABLE FLOW)
-   ====================================================== */
-app.post("/generate-video", async (req, res) => {
-  const jobId = uuidv4();
-  startJob(jobId);
-
-  try {
-    const { projectId, promptText, duration, ratio } = req.body;
-
-    const project = getOrCreateProject(projectId);
-
-    if (!project.runwayImageUrl) {
-      project.runwayImageUrl = project.originalImageUrl;
-    }
-
-    const response = await fetch(
-      "https://api.runwayml.com/v1/image_to_video",
+    const runwayRes = await fetch(
+      "https://api.dev.runwayml.com/v1/image_to_video",
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.RUNWAY_API_KEY}`,
           "Content-Type": "application/json",
+          "X-Runway-Version": process.env.RUNWAY_API_VERSION,
         },
         body: JSON.stringify({
-          promptImage: project.runwayImageUrl,
-          promptText,
+          model: "gen4_turbo",
+          promptImage: image_url,
+          promptText: prompt,
           duration,
           ratio,
         }),
       }
     );
 
-    const data = await response.json();
+    const data = await runwayRes.json();
 
-    if (!response.ok) {
-      throw new Error(JSON.stringify(data));
+    if (!runwayRes.ok) {
+      return res.status(500).json({
+        success: false,
+        error: data,
+      });
     }
-
-    finishJob(jobId);
 
     res.json({
       success: true,
-      task_id: data.id || data.task_id,
+      task_id: data.id,
     });
   } catch (error) {
-    finishJob(jobId);
+    console.error("❌ Video generation error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -262,19 +212,59 @@ app.post("/generate-video", async (req, res) => {
   }
 });
 
-/* ======================================================
+/* ======================
+   RUNWAY – VIDEO STATUS
+====================== */
+app.get("/video-status/:taskId", async (req, res) => {
+  try {
+    const { taskId } = req.params;
+
+    const response = await fetch(
+      `https://api.dev.runwayml.com/v1/tasks/${taskId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.RUNWAY_API_KEY}`,
+          "X-Runway-Version": process.env.RUNWAY_API_VERSION,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(500).json({
+        success: false,
+        error: data,
+      });
+    }
+
+    res.json({
+      success: true,
+      status: data.status,
+      output: data.output || null,
+    });
+  } catch (error) {
+    console.error("❌ Video status error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/* ======================
    404
-   ====================================================== */
+====================== */
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    error: "Ruta no encontrada",
+    error: "Route not found",
   });
 });
 
-/* ======================================================
+/* ======================
    START SERVER
-   ====================================================== */
+====================== */
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 CCREATY backend running on port ${PORT}`);
 });
