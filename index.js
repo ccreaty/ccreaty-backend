@@ -21,7 +21,7 @@ app.get("/", (req, res) => {
 });
 
 /* ======================
-   GEMINI TEST (REST v1)
+   GEMINI TEST (REST v1 – ESTABLE)
 ====================== */
 app.get("/test-gemini", async (req, res) => {
   try {
@@ -33,7 +33,7 @@ app.get("/test-gemini", async (req, res) => {
     }
 
     const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" +
+      "https://generativelanguage.googleapis.com/v1/models/gemini-1.0-pro:generateContent?key=" +
         process.env.GEMINI_API_KEY,
       {
         method: "POST",
