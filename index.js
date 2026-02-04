@@ -1,142 +1,74 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import { VertexAI } from "@google-cloud/vertexai";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// MODELO ACTIVO ACTUAL (API KEY)
-const MODEL = "gemini-2.0-flash";
-
 app.use(cors());
 app.use(express.json());
 
-/* ======================
-   HEALTH CHECK
-====================== */
+// ======================
+// HEALTH CHECK
+// ======================
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
     message: "CCREATY backend activo 🚀",
-    model: MODEL,
-    hasKey: Boolean(process.env.GEMINI_API_KEY),
   });
 });
 
-/* ======================
-   GEMINI TEST (FINAL)
-====================== */
-app.get("/test-gemini", async (req, res) => {
-  try {
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      return res.status(500).json({
-        success: false,
-        error: "GEMINI_API_KEY no configurada",
-      });
-    }
-
-    const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: "Dame 3 ángulos de venta para un suplemento natural para hombres",
-              },
-            ],
-          },
-        ],
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(500).json({
-        success: false,
-        model: MODEL,
-        error: data,
-      });
-    }
-
-    res.json({
-      success: true,
-      model: MODEL,
-      result: data.candidates[0].content.parts[0].text,
-    });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    });
-  }
-});
-/* ======================
-   GEMINI IMAGE TEST
-====================== */
+// ======================
+// VERTEX AI IMAGE (NANO BANANA)
+// ======================
 app.get("/test-image", async (req, res) => {
   try {
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
       return res.status(500).json({
         success: false,
-        error: "GEMINI_API_KEY no configurada",
+        error: "Credenciales de Google no configuradas",
       });
     }
 
-    const prompt =
-      "Fotografía realista de un frasco de suplemento natural para hombres, fondo blanco, iluminación profesional, estilo ecommerce";
-
-    const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-image:generateContent?key=" +
-        process.env.GEMINI_API_KEY,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: prompt }],
-            },
-          ],
-        }),
-      }
+    // Convertimos el JSON en credencial real
+    const credentials = JSON.parse(
+      process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
     );
 
-    const data = await response.json();
+    const vertexAI = new VertexAI({
+      project: credentials.project_id,
+      location: "us-central1",
+      credentials,
+    });
 
-    if (!response.ok) {
-      return res.status(500).json({
-        success: false,
-        error: data,
-      });
-    }
+    const model = vertexAI.getGenerativeModel({
+      model: "imagegeneration@002", // Nano Banana (Imagen)
+    });
+
+    const prompt =
+      "Un frasco de suplemento natural para hombres, estilo premium, fondo blanco, iluminación profesional, realista";
+
+    const response = await model.generateContent({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }],
+        },
+      ],
+    });
 
     const imageBase64 =
-      data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-
-    if (!imageBase64) {
-      return res.status(500).json({
-        success: false,
-        error: "No se generó imagen (no llegó inlineData)",
-        raw: data,
-      });
-    }
+      response.response.candidates[0].content.parts[0].inlineData.data;
 
     res.json({
       success: true,
       image_base64: imageBase64,
     });
   } catch (error) {
-    console.error("❌ Error Imagen Gemini:", error);
+    console.error("❌ Error Imagen:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -144,9 +76,9 @@ app.get("/test-image", async (req, res) => {
   }
 });
 
-/* ======================
-   404
-====================== */
+// ======================
+// 404 HANDLER
+// ======================
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -154,9 +86,9 @@ app.use((req, res) => {
   });
 });
 
-/* ======================
-   START
-====================== */
+// ======================
+// START SERVER
+// ======================
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
