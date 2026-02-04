@@ -8,9 +8,6 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-/* ======================
-   MIDDLEWARE
-====================== */
 app.use(cors());
 app.use(express.json());
 
@@ -25,37 +22,34 @@ app.get("/", (req, res) => {
 });
 
 /* ======================
-   GEMINI TEST ROUTE
+   GEMINI TEST
 ====================== */
 app.get("/test-gemini", async (req, res) => {
   try {
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({
         success: false,
-        error: "GEMINI_API_KEY no está configurada en Railway",
+        error: "GEMINI_API_KEY no configurada",
       });
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-    // ✅ MODELO CORRECTO Y ACTUAL
+    // ✅ MODELO CORRECTO PARA v1beta
     const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-pro-latest",
+      model: "models/gemini-1.5-flash",
     });
 
     const result = await model.generateContent(
       "Dame 3 ángulos de venta para un suplemento natural para hombres"
     );
 
-    const response = result.response.text();
-
     res.json({
       success: true,
-      result: response,
+      result: result.response.text(),
     });
   } catch (error) {
     console.error("❌ Error Gemini:", error.message);
-
     res.status(500).json({
       success: false,
       error: error.message,
