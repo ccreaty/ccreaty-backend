@@ -94,14 +94,19 @@ app.get("/test-image", async (req, res) => {
               "Foto publicitaria realista de un frasco de suplemento natural para hombres, fondo blanco, iluminación profesional, estilo ecommerce premium",
           },
         ],
-        parameters: { sampleCount: 1 },
+        parameters: {
+          sampleCount: 1,
+        },
       }),
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(500).json({ success: false, error: data });
+      return res.status(500).json({
+        success: false,
+        error: data,
+      });
     }
 
     const imageBase64 = data.predictions?.[0]?.bytesBase64Encoded;
@@ -112,7 +117,10 @@ app.get("/test-image", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Image error:", error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 
@@ -186,7 +194,9 @@ app.post("/generate-image", async (req, res) => {
     if (!imageBase64) {
       return res.status(500).json({
         success: false,
-        error: "No se recibió bytesBase64Encoded desde Imagen 3",
+        error: "No se recibió bytesBase64Encoded desde Vertex AI",
+        raw: data,
+        prompt_used: prompt,
       });
     }
 
@@ -197,54 +207,52 @@ app.post("/generate-image", async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Dynamic image error:", error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 
 /* ======================
-   RUNWAY - CREATE VIDEO
+   VIDEO GENERATION (RUNWAY)
 ====================== */
 app.post("/generate-video", async (req, res) => {
   try {
-    const { image_url, prompt, duration } = req.body;
+    const { image_url, prompt, duration = 10 } = req.body;
 
-    if (!image_url || !prompt || !duration) {
+    if (!image_url || !prompt) {
       return res.status(400).json({
         success: false,
-        error: "image_url, prompt y duration son obligatorios",
+        error: "Faltan image_url o prompt",
       });
     }
 
-    if (![10, 20].includes(Number(duration))) {
-      return res.status(400).json({
-        success: false,
-        error: "La duración debe ser 10 o 20 segundos",
-      });
-    }
-
-    const response = await fetch(
-      "https://api.runwayml.com/v1/image_to_video",
+    const runwayResponse = await fetch(
+      "https://api.dev.runwayml.com/v1/image_to_video",
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.RUNWAY_API_KEY}`,
           "Content-Type": "application/json",
-          "X-Runway-Version": process.env.RUNWAY_API_VERSION,
+          "X-Runway-Version": "2024-11-06",
         },
         body: JSON.stringify({
           model: "gen4_turbo",
           promptImage: image_url,
           promptText: prompt,
-          duration: Number(duration),
-          ratio: "720:1280",
+          duration: duration,
         }),
       }
     );
 
-    const data = await response.json();
+    const data = await runwayResponse.json();
 
-    if (!response.ok) {
-      return res.status(500).json({ success: false, error: data });
+    if (!runwayResponse.ok) {
+      return res.status(500).json({
+        success: false,
+        error: data,
+      });
     }
 
     res.json({
@@ -252,38 +260,11 @@ app.post("/generate-video", async (req, res) => {
       task_id: data.id,
     });
   } catch (error) {
-    console.error("❌ Runway generate-video error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-/* ======================
-   RUNWAY - VIDEO STATUS
-====================== */
-app.get("/video-status/:taskId", async (req, res) => {
-  try {
-    const { taskId } = req.params;
-
-    const response = await fetch(
-      `https://api.runwayml.com/v1/tasks/${taskId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.RUNWAY_API_KEY}`,
-          "X-Runway-Version": process.env.RUNWAY_API_VERSION,
-        },
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(500).json({ success: false, error: data });
-    }
-
-    res.json({ success: true, task: data });
-  } catch (error) {
-    console.error("❌ Runway status error:", error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error("❌ Runway video error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
 
@@ -298,7 +279,7 @@ app.use((req, res) => {
 });
 
 /* ======================
-   START
+   START SERVER
 ====================== */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
