@@ -180,9 +180,45 @@ app.post("/generate-image", async (req, res) => {
    🔥 AD IMAGE GENERATION (GEMINI IMAGE / NANO BANANA)
    POST /generate-ad-image
 ====================== */
+async function fetchImageAsBase64(url) {
+  const imgResp = await fetch(url);
+
+  if (!imgResp.ok) {
+    throw new Error(`No se pudo descargar product_image_url (${imgResp.status})`);
+  }
+
+  const contentType = imgResp.headers.get("content-type") || "image/jpeg";
+  const buf = await imgResp.arrayBuffer();
+
+  return {
+    mimeType: contentType,
+    base64: Buffer.from(buf).toString("base64"),
+  };
+}
+
+function assertHttpsUrl(u) {
+  let parsed;
+  try {
+    parsed = new URL(u);
+  } catch {
+    throw new Error("product_image_url inválido (no es URL válida)");
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error("product_image_url debe ser https");
+  }
+  return parsed;
+}
+
 app.post("/generate-ad-image", async (req, res) => {
   try {
     const { product_image_url, user_prompt } = req.body || {};
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({
+        success: false,
+        error: "Missing GEMINI_API_KEY in Railway env vars",
+      });
+    }
 
     if (!product_image_url || !user_prompt) {
       return res.status(400).json({
@@ -191,26 +227,21 @@ app.post("/generate-ad-image", async (req, res) => {
       });
     }
 
-    const SYSTEM_PROMPT = `
-IMPORTANT SYSTEM INSTRUCTIONS:
+    // Basic URL validation (avoid weird inputs)
+    assertHttpsUrl(product_image_url);
 
-- The product image must remain IDENTICAL
-- Do NOT change shape, size, label, colors or proportions
-- Do NOT redesign or recreate the product
+    // ✅ Prompt template corto + fidelity lock (siempre aplicado)
+    const FIDELITY_LOCK_SHORT = `
+PRODUCT FIDELITY LOCK (STRICT):
+Keep the product EXACTLY identical to the input photo. Do not change label, logo, typography, colors, materials, reflections, shape, proportions, cap, or packaging. No redesign. No stylization (no 3D/cartoon/illustration). No warp/morph/blur/stretch. Product must be fully visible and dominant. If any risk of altering the product, simplify the scene and preserve the original product unchanged.
+All on-image marketing text must be in Spanish (neutral LATAM).
+Photorealistic commercial ad photoshoot, high-converting, clean visual hierarchy, no AI artifacts.
+`.trim();
 
-TASK:
-Create a high-conversion advertising image:
-- Add a bold headline
-- Add visual elements representing benefits
-- Optional realistic human models (not touching product)
-- Premium paid ads look
-`;
+    const finalPrompt = `${FIDELITY_LOCK_SHORT}\n\nUSER REQUEST:\n${user_prompt}`.trim();
 
-    const finalPrompt = `${SYSTEM_PROMPT}\n\n${user_prompt}`;
-
-    const imageBuffer = await fetch(product_image_url).then(r =>
-      r.arrayBuffer()
-    );
+    // ✅ Download reference image and keep correct mime type
+    const { mimeType, base64 } = await fetchImageAsBase64(product_image_url);
 
     const response = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-image:generateContent",
@@ -227,8 +258,8 @@ Create a high-conversion advertising image:
               parts: [
                 {
                   inline_data: {
-                    mime_type: "image/png",
-                    data: Buffer.from(imageBuffer).toString("base64"),
+                    mime_type: mimeType,
+                    data: base64,
                   },
                 },
                 { text: finalPrompt },
@@ -241,21 +272,37 @@ Create a high-conversion advertising image:
 
     const data = await response.json();
 
-    const imageBase64 =
-      data?.candidates?.[0]?.content?.parts?.find(p => p.inline_data)?.inline_data
-        ?.data;
+    // ✅ Surface provider errors clearly
+    if (!response.ok) {
+      return res.status(response.status).json({
+        success: false,
+        error: data,
+      });
+    }
 
-    res.json({
+    const imageBase64 =
+      data?.candidates?.[0]?.content?.parts?.find((p) => p.inline_data)?.inline_data?.data;
+
+    if (!imageBase64) {
+      return res.status(502).json({
+        success: false,
+        error: "Gemini no devolvió image_base64 (inline_data).",
+        raw: data,
+      });
+    }
+
+    return res.json({
       success: true,
       image_base64: imageBase64,
     });
   } catch (error) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      error: error?.message || error,
+      error: error?.message || String(error),
     });
   }
 });
+
 
 /* ======================
    RUNWAY VIDEO (NO CHANGES)
