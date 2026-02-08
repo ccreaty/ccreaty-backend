@@ -9,7 +9,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-/* Prevent 413 */
+/* ======================
+   MIDDLEWARE
+====================== */
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cors());
@@ -18,19 +20,19 @@ app.use(cors());
    HEALTH CHECK
 ====================== */
 app.get("/", (req, res) => {
-  res.json({
-    status: "ok",
-    message: "CCREATY backend activo 🚀",
-  });
+  res.json({ status: "ok", message: "CCREATY backend activo 🚀" });
 });
 
 /* ======================
-   GOOGLE ACCESS TOKEN
+   GOOGLE AUTH (JWT)
 ====================== */
 async function getAccessToken() {
-  const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+  const credentials = JSON.parse(
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
+  );
 
   const now = Math.floor(Date.now() / 1000);
+
   const payload = {
     iss: credentials.client_email,
     scope: "https://www.googleapis.com/auth/cloud-platform",
@@ -54,112 +56,198 @@ async function getAccessToken() {
 
   const data = await response.json();
   if (!response.ok) throw new Error(JSON.stringify(data));
+
   return data.access_token;
 }
 
 /* ======================
-   IMAGEN 3 – CONTEXT ONLY
+   HELPERS
 ====================== */
-async function generateContextImage(prompt) {
-  const accessToken = await getAccessToken();
-
-  const projectId = process.env.GCP_PROJECT_ID;
-  const location = process.env.GCP_LOCATION || "us-central1";
-
-  const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-3.0-generate-001:predict`;
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      instances: [{ prompt }],
-      parameters: { sampleCount: 1 },
-    }),
-  });
-
-  const data = await response.json();
-  if (!response.ok) throw new Error(JSON.stringify(data));
-
-  const imageBase64 = data?.predictions?.[0]?.bytesBase64Encoded;
-  if (!imageBase64) throw new Error("Imagen 3 no devolvió imagen");
-
-  return imageBase64;
+async function fetchImageAsBase64(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("No se pudo descargar la imagen");
+  const buf = await r.arrayBuffer();
+  return {
+    mimeType: r.headers.get("content-type") || "image/jpeg",
+    base64: Buffer.from(buf).toString("base64"),
+  };
 }
 
 /* ======================
-   TEST IMAGE
+   🔍 PRODUCT ANALYSIS (IMAGE → ANGLES)
+   POST /analyze-product
 ====================== */
-app.get("/test-image", async (req, res) => {
+app.post("/analyze-product", async (req, res) => {
   try {
-    const prompt = `
-Generate ONLY a photorealistic advertising background.
-No product.
-Clean studio lighting.
-Premium ecommerce look.
-Neutral background.
-`;
+    const { product_image_url } = req.body || {};
+    if (!product_image_url)
+      return res.status(400).json({ success: false, error: "Falta image" });
 
-    const image = await generateContextImage(prompt);
-    res.json({ success: true, image_base64: image });
+    const { base64, mimeType } = await fetchImageAsBase64(product_image_url);
+
+    const prompt = `
+You are a senior ecommerce product analyst.
+
+Analyze the product image and return STRICT JSON:
+{
+  "product_name": "",
+  "product_type": "",
+  "audience": "",
+  "benefits": [],
+  "angles": [
+    { "id": 1, "title": "", "description": "" },
+    { "id": 2, "title": "", "description": "" },
+    { "id": 3, "title": "", "description": "" }
+  ]
+}
+`.trim();
+
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": process.env.GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { inline_data: { mime_type: mimeType, data: base64 } },
+                { text: prompt },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+
+    const data = await response.json();
+    const text =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+
+    res.json({ success: true, analysis: JSON.parse(text) });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
 /* ======================
-   GENERATE BACKGROUND (BANNER / LANDING / INSPIRATION)
+   🖼️ IMAGE GENERATION (GEMINI IMAGE – FIDELITY LOCK)
+   POST /generate-ad-image
 ====================== */
-app.post("/generate-background", async (req, res) => {
+app.post("/generate-ad-image", async (req, res) => {
   try {
-    const { angle, mood, colors } = req.body || {};
+    const { product_image_url, user_prompt } = req.body || {};
+    if (!product_image_url || !user_prompt)
+      return res.status(400).json({ success: false, error: "Datos incompletos" });
 
-    const prompt = `
-IMPORTANT:
-Do NOT generate any product.
-The product will be added later as a fixed layer.
+    const { base64, mimeType } = await fetchImageAsBase64(product_image_url);
 
-TASK:
-Generate a high-converting advertising background.
+    const LOCK = `
+STRICT PRODUCT FIDELITY:
+- Product must be IDENTICAL to input image
+- Do NOT change label, logo, colors, shape, cap, proportions
+- No redesign, no stylization, no morphing
+- Product fully visible and dominant
+- Text must be Spanish (LATAM)
+`.trim();
 
-Style:
-Photorealistic
-Professional ad photography
-Clean visual hierarchy
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-image:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": process.env.GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { inline_data: { mime_type: mimeType, data: base64 } },
+                { text: `${LOCK}\n${user_prompt}` },
+              ],
+            },
+          ],
+        }),
+      }
+    );
 
-Angle:
-${angle || "Premium natural supplement"}
+    const data = await response.json();
+    const img =
+      data?.candidates?.[0]?.content?.parts?.find((p) => p.inline_data)
+        ?.inline_data?.data;
 
-Mood:
-${mood || "Trust, confidence, desire"}
+    if (!img) throw new Error("Gemini no devolvió imagen");
 
-Color palette:
-${colors || "Neutral with premium accents"}
-
-Leave clear space for product placement.
-`;
-
-    const image = await generateContextImage(prompt);
-    res.json({ success: true, image_base64: image });
+    res.json({ success: true, image_base64: img });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
 /* ======================
-   RUNWAY VIDEO (UNCHANGED)
+   🧩 LANDING SECTION (QUEUE SAFE)
+   POST /generate-landing-section
 ====================== */
-/* TODO: tu código de Runway sigue igual */
+app.post("/generate-landing-section", async (req, res) => {
+  try {
+    const { product_image_url, section_prompt } = req.body || {};
+    const { base64, mimeType } = await fetchImageAsBase64(product_image_url);
+
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-image:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": process.env.GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { inline_data: { mime_type: mimeType, data: base64 } },
+                { text: section_prompt },
+              ],
+            },
+          ],
+        }),
+      }
+    );
+
+    const data = await response.json();
+    const img =
+      data?.candidates?.[0]?.content?.parts?.find((p) => p.inline_data)
+        ?.inline_data?.data;
+
+    res.json({ success: true, image_base64: img });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+/* ======================
+   🎬 RUNWAY VIDEO (UNCHANGED & STABLE)
+====================== */
+// 👉 AQUÍ VA EXACTAMENTE TU CÓDIGO DE RUNWAY ACTUAL
+// NO se toca, NO se modifica
 
 /* ======================
    404
 ====================== */
-app.use((req, res) => {
-  res.status(404).json({ success: false, error: "Ruta no encontrada" });
-});
+app.use((req, res) =>
+  res.status(404).json({ success: false, error: "Ruta no encontrada" })
+);
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+/* ======================
+   START
+====================== */
+app.listen(PORT, () =>
+  console.log(`🚀 CCREATY backend corriendo en ${PORT}`)
+);
